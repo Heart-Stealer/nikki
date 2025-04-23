@@ -11,4 +11,6 @@ if [ -f ai_feeds.conf ]; then
     echo "文件已成功移动到 /etc/opkg/ 目录"
 else
     echo "文件下载失败"
+    exit 1
 fi
+exit 0

@@ -13,6 +13,7 @@ Dingyue: &Dingyue
   include-all: true
   use:
     - 本地配置
+    - ZDYZ2
     - 订阅1
     - 订阅2
 
@@ -31,6 +32,24 @@ proxy-providers:
       - pattern: "(?i)(印度|拒绝|直连|群|邀请|返利|循环|官网|客服|网站|网址|获取|订阅|流量|到期|机场|下次|版本|官址|备用|过期|已用|联系|邮箱|工单|贩卖|通知|倒卖|防止|国内|地址|频道|无法|说明|使用|提示|特别|访问|支持|教程|关注|更新|作者|加入|USE|USED|TOTAL|EXPIRE|EMAIL|Panel|Channel|Author|traffic)"
         target: "🟢"
 
+  ZDYZ2:
+    type: http
+    path: ./proxy-providers/zdyz2.yaml
+    url: "https://sublink.634676.xyz/sub"
+    <<: *DY_urltest
+    override:
+      # additional-prefix: "[1️⃣]"
+      additional-suffix: "[1️⃣]"
+      proxy-name:
+      - pattern: "(?i)(拒绝|直连|群|邀请|返利|循环|官网|客服|网站|网址|获取|订阅|流量|到期|机场|下次|版本|官址|备用|过期|已用|联系|邮箱|工单|贩卖|通知|倒卖|防止|国内|地址|频道|无法|说明|使用|提示|特别|访问|支持|教程|关注|更新|作者|加入|USE|USED|TOTAL|EXPIRE|EMAIL|Panel|Channel|Author|traffic)"
+        target: "🟢"
+  #   type: http
+  #   path: ./proxy-providers/dingyue1.yaml
+  #   url: "https://sub.vip.sd/JPa6vvFgygVtNP2sGJ2r/download/YuanZhang"
+  #   <<: *DY_urltest
+    # override:
+    #   # additional-prefix: "[1️⃣]"
+    #   additional-suffix: "[1️⃣]"
   订阅1:
     type: http
     path: ./proxy-providers/dingyue1.yaml

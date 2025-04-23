@@ -1,7 +1,5 @@
 #!/bin/sh
-
 # Nikki's feed
-
 # check env
 if [[ ! -x "/bin/opkg" && ! -x "/usr/bin/apk" || ! -x "/sbin/fw4" ]]; then
 	echo "only supports OpenWrt build with firewall4!"
