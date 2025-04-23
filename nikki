@@ -5,7 +5,7 @@ config config 'config'
 	option enabled '1'
 	option profile 'file:nikki.yaml'
 	option start_delay '20'
-	option scheduled_restart '1'
+	option scheduled_restart '0'
 	option cron_expression '0 3 * * *'
 	option test_profile '0'
 	option fast_reload '1'
@@ -51,7 +51,7 @@ config mixin 'mixin'
 	option tproxy_port '7894'
 	option authentication '0'
 	option tun_device 'nikki'
-	option tun_stack 'mixed'
+	option tun_stack 'gvisor'
 	option tun_mtu '9000'
 	option tun_gso_max_size '65536'
 	option tun_dns_hijack '1'
@@ -150,7 +150,7 @@ config mixin 'mixin'
 	list fake_ip_filters '5ddd.com'
 	list fake_ip_filters 'time1.cloud.tencent.com'
 	list fake_ip_filters 'WORKGROUP'
-	list fake_ip_filters '*'
+	list fake_ip_filters 'sysupgrade.kyarucloud.moe'
 
 config env 'env'
 	option disable_safe_path_check '0'
@@ -213,36 +213,28 @@ config hosts
 	list ip '192.168.1.1'
 
 config nameserver
-	option enabled '1'
+	option enabled '0'
 	option type 'default-nameserver'
 	list nameserver '223.5.5.5'
 	list nameserver '119.29.29.29'
-	list nameserver '8.8.8.8'
-	list nameserver '1.1.1.1'
 
 config nameserver
-	option enabled '1'
+	option enabled '0'
 	option type 'proxy-server-nameserver'
 	list nameserver '223.5.5.5'
 	list nameserver '119.29.29.29'
-	list nameserver '8.8.8.8'
-	list nameserver '1.1.1.1'
 
 config nameserver
 	option enabled '0'
 	option type 'direct-nameserver'
 	list nameserver '223.5.5.5'
 	list nameserver '119.29.29.29'
-	list nameserver '8.8.8.8'
-	list nameserver '1.1.1.1'
 
 config nameserver
 	option enabled '1'
 	option type 'nameserver'
 	list nameserver '223.5.5.5'
 	list nameserver '119.29.29.29'
-	list nameserver '8.8.8.8'
-	list nameserver '1.1.1.1'
 
 config nameserver
 	option enabled '0'
@@ -259,8 +251,8 @@ config nameserver_policy
 config nameserver_policy
 	option enabled '1'
 	option matcher 'geosite:geolocation-!cn'
-	list nameserver 'https://dns.cloudflare.com/dns-query'
-	list nameserver 'https://dns.google/dns-query'
+	list nameserver '8.8.8.8'
+	list nameserver '1.1.1.1'
 
 config sniff
 	option overwrite_destination '1'
