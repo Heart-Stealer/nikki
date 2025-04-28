@@ -132,7 +132,14 @@ init_nikki_config() {
     uci set nikki.@lan_access_control[-1].proxy='1'
     uci set nikki.proxy.bypass_china_mainland_ip='1'
     uci set nikki.config.enabled='1'
-    
+
+    uci del dhcp.cfg01411c.dns_redirect
+    uci del dhcp.cfg01411c.nonwildcard
+    uci del dhcp.cfg01411c.boguspriv
+    uci del dhcp.cfg01411c.filterwin2k
+    uci del dhcp.cfg01411c.filter_aaaa
+    uci del dhcp.cfg01411c.filter_a
+
     # 提交配置更改
     uci commit nikki
     /etc/init.d/nikki restart
