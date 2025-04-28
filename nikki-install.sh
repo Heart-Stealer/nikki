@@ -224,8 +224,6 @@ log "主程序开始,=== Nikki服务安装配置脚本开始 ==="
 # 检查Nikki是否已安装
 if [ -d "/etc/nikki" ]; then
     log "主程序开始,检测到/etc/nikki目录已存在，跳过安装步骤"
-    # 初始化Nikki配置
-    init_nikki_config
 else
     log "主程序开始,未检测到Nikki安装，开始安装流程..."
     
@@ -274,6 +272,9 @@ while [ $attempt -le $max_retries ]; do
     sleep $short_delay
 done
 
+# 初始化Nikki配置
+init_nikki_config
+
 # 重载服务配置
 manage_service
 # log "等待 ${long_delay}秒让服务稳定运行..."
@@ -301,4 +302,3 @@ fi
 
 log "=== Nikki服务安装配置完成 ==="
 exit 0
-
