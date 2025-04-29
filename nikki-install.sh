@@ -1,304 +1,312 @@
 #!/bin/bash
-# Nikki服务自动安装和配置脚本
 
-# 同时输出到终端和日志文件
-exec > >(tee -a "/tmp/nikki-install.log") 2>&1
+# ========== 全局变量定义 ==========
+SCRIPT_LOG="/tmp/nikki-install.log"
+NIKKI_SERVICE_PATH="/etc/init.d/nikki"
+NIKKI_PROFILE_DIR="/etc/nikki/profiles"
+CONFIG_APPLIED_MARKER="/var/run/nikki_config_applied"
+LOG_DIR="/tmp/log"
+APP_LOG="$LOG_DIR/nikki/app.log"
 
-# ========== 初始化变量 ==========
-log_dir="/tmp/log"                          # 日志文件存放目录
-app_log="$log_dir/nikki/app.log"            # Nikki应用日志路径
-script_log="$log_dir/nikki-install.log"     # 脚本执行日志路径
+# URL配置
+FEED_URL="https://github.com/nikkinikki-org/OpenWrt-nikki/raw/refs/heads/main/feed.sh"
+NIKKI_CONFIG_URL="https://raw.githubusercontent.com/Heart-Stealer/nikki/main/nikki.yaml"
+PROXY_CONFIG_URL="https://raw.githubusercontent.com/Heart-Stealer/myclash/main/clashmetatest.yaml"
+GH_PROXY="https://gh-proxy.com/"
 
-# 配置文件下载URL（备用镜像）
-config_url_1="https://gh-proxy.com/https://raw.githubusercontent.com/Heart-Stealer/nikki/main/nikki.yaml"
-config_url_2="https://raw.githubusercontent.com/Heart-Stealer/nikki/main/nikki.yaml"
-proxy_url_1="https://gh-proxy.com/https://raw.githubusercontent.com/Heart-Stealer/myclash/main/clashmetatest.yaml"
-proxy_url_2="https://raw.githubusercontent.com/Heart-Stealer/myclash/main/clashmetatest.yaml"
-
-# 目标目录和重试参数
-target_dir="/etc/nikki/profiles"            # 配置文件存放目录
-max_retries=3                               # 最大重试次数
-short_delay=3                               # 短延迟时间（秒）
-long_delay=30                               # 长延迟时间（秒）
-# Nikki安装相关
-nikki_install_script="https://gh-proxy.com/https://github.com/nikkinikki-org/OpenWrt-nikki/raw/refs/heads/main/feed.sh"
-nikki_pkgs="nikki luci-app-nikki luci-i18n-nikki-zh-cn"
+# 软件包列表
+PACKAGES=(
+    "nikki"
+    "luci-app-nikki"
+    "luci-i18n-nikki-zh-cn"
+)
 
 # ========== 日志记录函数 ==========
 log() {
-    # 记录带时间戳的日志信息
-    echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" | tee -a "$script_log"
+    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    echo "$timestamp - $1" | tee -a "$SCRIPT_LOG"
 }
 
-# ========== 网络检查函数 ==========
+# ========== 辅助函数 ==========
+
+# 检查网络连接
 check_network() {
-    local retries=0
-    while [ $retries -lt $max_retries ]; do
-        if ping -c 1 8.8.8.8 >/dev/null 2>&1; then
-            log "网络检查函数,网络连接正常"
-            return 0
-        fi
-        retries=$((retries + 1))
-        log "网络检查函数,网络连接异常，第 $retries 次重试..."
-        sleep $short_delay
-    done
-    log "网络检查函数,错误：网络连接检查失败，请检查网络后重试"
-    return 1
+    log "检查网络连接..."
+    if ping -c 3 8.8.8.8 &> /dev/null; then
+        log "网络连接正常"
+        return 0
+    else
+        log "错误：当前路由器无法连接互联网，请检查网络设置"
+        return 1
+    fi
 }
 
-# ========== 安装Nikki服务函数 ==========
-install_nikki() {
-    log "安装Nikki服务函数,开始安装Nikki服务..."
+# 从URL提取文件名
+extract_filename() {
+    basename "$1"
+}
+
+# 显示菜单并获取用户选择
+show_menu() {
+    local prompt="$1"
+    local options=("${@:2}")
+    local choice
     
-    # 下载并执行安装脚本
-    curl -s -L "$nikki_install_script" | ash
-    if [ $? -ne 0 ]; then
-        log "安装Nikki服务函数,错误：Nikki安装脚本下载失败"
-        return 1
-    fi
-    
-    # 安装必要的软件包
-    local pkg_errors=0
-    for pkg in $nikki_pkgs; do
-        opkg install $pkg || pkg_errors=$((pkg_errors+1))
+    echo "$prompt"
+    for i in "${!options[@]}"; do
+        printf "%d) %s\n" $((i+1)) "${options[i]}"
     done
     
-    if [ $pkg_errors -gt 0 ]; then
-        log "安装Nikki服务函数,错误：有 $pkg_errors 个软件包安装失败"
+    while true; do
+        read -p "请输入选择 (1-${#options[@]}): " choice
+        if [[ "$choice" =~ ^[0-9]+$ ]] && ((choice >= 1 && choice <= ${#options[@]})); then
+            return $((choice-1))
+        fi
+        log "无效输入，请重新选择"
+    done
+}
+
+# ========== 核心功能函数 ==========
+
+# 检查Nikki服务状态
+check_nikki_service() {
+    if [ -x "$NIKKI_SERVICE_PATH" ]; then
+        if [ -f "$CONFIG_APPLIED_MARKER" ]; then
+            log "Nikki服务已存在且已配置"
+            return 0
+        else
+            show_menu "Nikki服务已存在但未配置，是否继续？" \
+                      "继续配置" \
+                      "退出安装"
+            if [ $? -eq 1 ]; then
+                log "安装已取消"
+                exit 0
+            fi
+            return 1
+        fi
+    else
+        log "Nikki服务未安装"
         return 1
     fi
+}
+
+# 下载Nikki安装脚本
+download_nikki_feed() {
+    local options=(
+        "原始源地址 ($FEED_URL)"
+        "代理镜像地址 ($GH_PROXY$FEED_URL)"
+    )
     
-    log "安装Nikki服务函数,Nikki服务安装完成"
+    show_menu "请选择Nikki安装源：" "${options[@]}"
+    local selected=$?
+    
+    local download_url
+    if [ $selected -eq 0 ]; then
+        download_url="$FEED_URL"
+    else
+        download_url="$GH_PROXY$FEED_URL"
+    fi
+    
+    log "正在从 $download_url 下载Nikki安装脚本..."
+    if curl -sSL "$download_url" | ash; then
+        log "Nikki安装脚本下载成功"
+        return 0
+    else
+        log "错误：Nikki安装脚本下载失败"
+        return 1
+    fi
+}
+
+# 安装Nikki软件包
+install_packages() {
+    log "开始安装Nikki相关软件包..."
+    
+    for pkg in "${PACKAGES[@]}"; do
+        log "正在安装 $pkg ..."
+        if ! opkg install "$pkg"; then
+            log "错误：$pkg 安装失败"
+            return 1
+        fi
+    done
+    
+    log "所有软件包安装完成"
     return 0
 }
 
-# ========== 初始化Nikki配置函数 ==========
+# 初始化Nikki配置
 init_nikki_config() {
-    log "初始化Nikki配置函数,开始初始化/etc/config/nikki配置..."
+    log "正在初始化Nikki配置..."
     
-    # 检查nikki是否安装
-    if [ ! -f "/etc/init.d/nikki" ]; then
-        log "初始化Nikki配置函数,错误：Nikki未安装，无法初始化配置"
-        return 1
-    fi
-    
-    # 检查app_log是否已经有Tun device is online或者successful，有了则直接跳出nikki配置函数
-    if [ -f "$app_log" ]; then
-        if grep -q "Tun device is online" "$app_log" || grep -q "successful" "$app_log"; then
-            log "初始化Nikki配置函数,日志文件中已包含Tun device is online或successful，跳过Nikki配置初始化"
-            return 0
-        fi
-    else
-        log "初始化Nikki配置函数,错误：Nikki未启动成功，开始nikki启动前配置"
-    fi
-
+    # 基本配置
     uci set nikki.config.profile='file:nikki.yaml'
     uci set nikki.config.test_profile='0'
     uci set nikki.config.fast_reload='1'
+    uci set nikki.config.enabled='1'
+    
+    # 订阅设置
     uci set nikki.subscription.name='nikki'
-    uci set nikki.subscription.url='https://gh-proxy.com/https://raw.githubusercontent.com/Heart-Stealer/myclash/main/nikkitest.yaml'
+    uci set nikki.subscription.url="$GH_PROXY/https://raw.githubusercontent.com/Heart-Stealer/myclash/main/nikkitest.yaml"
     uci set nikki.subscription.prefer='local'
-    uci del nikki.mixin.log_level
-    uci del nikki.mixin.mode
-    uci del nikki.mixin.match_process
-    uci del nikki.mixin.ipv6
-    uci del nikki.mixin.api_secret
-    uci set nikki.mixin.ui_url='https://gh-proxy.com/https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip'
-    uci del nikki.mixin.http_port
-    uci del nikki.mixin.socks_port
+    
+    # 混合设置
+    uci set nikki.mixin.log_level='warning'
+    uci del nikki.mixin.mode >/dev/null 2>&1
+    uci del nikki.mixin.match_process >/dev/null 2>&1
+    uci del nikki.mixin.ipv6 >/dev/null 2>&1
+    uci del nikki.mixin.api_secret >/dev/null 2>&1
+    uci set nikki.mixin.ui_url="$GH_PROXY/https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip"
+    uci del nikki.mixin.http_port >/dev/null 2>&1
+    uci del nikki.mixin.socks_port >/dev/null 2>&1
     uci set nikki.mixin.redir_port='7893'
     uci set nikki.mixin.tproxy_port='7894'
     uci set nikki.mixin.authentication='0'
-    uci del nikki.mixin.dns_ipv6
-    uci del nikki.mixin.fake_ip_cache
+    uci del nikki.mixin.dns_ipv6 >/dev/null 2>&1
+    uci del nikki.mixin.fake_ip_cache >/dev/null 2>&1
+    
+    # 代理设置
     uci set nikki.cfg0793d7.proxy='1'
     uci set nikki.cfg0893d7.enabled='0'
     uci set nikki.cfg0893d7.proxy='0'
-    uci add nikki lan_access_control # =cfg16a831
-    uci set nikki.@lan_access_control[-1].enabled='1'
-    uci add_list nikki.@lan_access_control[-1].ip='192.168.1.1'
-    uci set nikki.@lan_access_control[-1].proxy='1'
-    uci add nikki lan_access_control # =cfg17a831
-    uci set nikki.@lan_access_control[-1].enabled='1'
-    uci add_list nikki.@lan_access_control[-1].ip='192.168.1.150'
-    uci set nikki.@lan_access_control[-1].proxy='1'
-    uci add nikki lan_access_control # =cfg18a831
-    uci set nikki.@lan_access_control[-1].enabled='1'
-    uci add_list nikki.@lan_access_control[-1].ip='192.168.1.247'
-    uci set nikki.@lan_access_control[-1].proxy='1'
-    uci add nikki lan_access_control # =cfg19a831
-    uci set nikki.@lan_access_control[-1].enabled='1'
-    uci add_list nikki.@lan_access_control[-1].ip='192.168.1.192'
-    uci set nikki.@lan_access_control[-1].proxy='1'
+    
+    # LAN访问控制
+    local lan_ips=("192.168.1.1" "192.168.1.150" "192.168.1.247" "192.168.1.192")
+    for ip in "${lan_ips[@]}"; do
+        uci add nikki lan_access_control
+        uci set "nikki.@lan_access_control[-1].enabled=1"
+        uci add_list "nikki.@lan_access_control[-1].ip=$ip"
+        uci set "nikki.@lan_access_control[-1].proxy=1"
+    done
+    
+    # 代理设置
     uci set nikki.proxy.bypass_china_mainland_ip='1'
-    uci set nikki.config.enabled='1'
+    
+    # DHCP设置
+    uci del dhcp.cfg01411c.dns_redirect >/dev/null 2>&1
+    uci del dhcp.cfg01411c.nonwildcard >/dev/null 2>&1
+    uci del dhcp.cfg01411c.boguspriv >/dev/null 2>&1
+    uci del dhcp.cfg01411c.filterwin2k >/dev/null 2>&1
+    uci del dhcp.cfg01411c.filter_aaaa >/dev/null 2>&1
+    uci del dhcp.cfg01411c.filter_a >/dev/null 2>&1
+    
+    uci commit
+    
+    # 标记已配置
+    touch "$CONFIG_APPLIED_MARKER"
+    log "Nikki配置初始化完成"
+}
 
-    uci del dhcp.cfg01411c.dns_redirect
-    uci del dhcp.cfg01411c.nonwildcard
-    uci del dhcp.cfg01411c.boguspriv
-    uci del dhcp.cfg01411c.filterwin2k
-    uci del dhcp.cfg01411c.filter_aaaa
-    uci del dhcp.cfg01411c.filter_a
-
-    # 提交配置更改
-    uci commit nikki
-    /etc/init.d/nikki restart
-    log "初始化Nikki配置函数,Nikki配置初始化完成"
+# 下载配置文件
+download_config_files() {
+    log "正在检查并下载配置文件..."
+    mkdir -p "$NIKKI_PROFILE_DIR"
+    
+    # 使用关联数组定义配置文件和目标文件名
+    declare -A config_map=(
+        ["$NIKKI_CONFIG_URL"]="nikki.yaml"
+        ["$PROXY_CONFIG_URL"]="proxy.yaml"
+    )
+    
+    for url in "${!config_map[@]}"; do
+        local filename="${config_map[$url]}"
+        local dest="$NIKKI_PROFILE_DIR/$filename"
+        
+        if [ -f "$dest" ]; then
+            show_menu "文件 $filename 已存在，是否覆盖？" \
+                      "保留现有文件" \
+                      "下载并覆盖"
+            if [ $? -eq 0 ]; then
+                continue
+            fi
+        fi
+        
+        show_menu "请选择 $filename 下载源：" \
+                  "原始源 ($url)" \
+                  "代理镜像 ($GH_PROXY$url)"
+        local selected=$?
+        
+        local download_url
+        if [ $selected -eq 0 ]; then
+            download_url="$url"
+        else
+            download_url="$GH_PROXY$url"
+        fi
+        
+        log "正在从 $download_url 下载 $filename ..."
+        if ! wget -O "$dest" "$download_url"; then
+            log "错误：$filename 下载失败"
+            return 1
+        fi
+        log "$filename 下载成功"
+    done
+    
     return 0
 }
 
-# ========== 配置文件下载函数 ==========
-download_config() {
-    # 创建目标目录（如果不存在）
-    mkdir -p "$target_dir"
+# 启动Nikki服务
+start_nikki_service() {
+    log "正在设置Nikki服务自启动..."
+    mkdir -p "$(dirname "$APP_LOG")"
     
-    local download_count=0
-
-    # 检查如果"$target_dir/nikki.yaml"和"$target_dir/clashmetatest.yaml"已经存在，则跳出download_config当前的函数
-    if [ -f "$target_dir/nikki.yaml" ] && [ -f "$target_dir/clashmetatest.yaml" ]; then
-        log "配置文件下载函数,nikki.yaml和clashmetatest.yaml均已存在，跳过下载"
-        return 0
-    fi
-
-    # 检查并下载主配置文件（如果不存在）
-    if [ ! -f "$target_dir/nikki.yaml" ]; then
-        log "配置文件下载函数,未找到nikki.yaml，开始下载..."
-        for url in "$config_url_1" "$config_url_2"; do
-            wget -q -O "$target_dir/nikki.yaml" "$url"
-            if [ $? -eq 0 ]; then
-                log "nikki.yaml下载成功: $url"
-                download_count=$((download_count+1))
-                break
-            else
-                log "nikki.yaml下载失败: $url"
-            fi
-        done
-    else
-        log "配置文件下载函数,nikki.yaml已存在，跳过下载"
-        download_count=$((download_count+1))
-    fi
-    
-    # 检查并下载代理配置文件（如果不存在）
-    if [ ! -f "$target_dir/clashmetatest.yaml" ]; then
-        log "配置文件下载函数,未找到clashmetatest.yaml，开始下载..."
-        for url in "$proxy_url_1" "$proxy_url_2"; do
-            wget -q -O "$target_dir/clashmetatest.yaml" "$url"
-            if [ $? -eq 0 ]; then
-                log "clashmetatest.yaml下载成功: $url"
-                download_count=$((download_count+1))
-                break
-            else
-                log "clashmetatest.yaml下载失败: $url"
-            fi
-        done
-    else
-        log "配置文件下载函数,clashmetatest.yaml已存在，跳过下载"
-        download_count=$((download_count+1))
-    fi
-    
-    # 返回状态（至少成功下载一个文件返回0，全部失败返回1）
-    [ $download_count -gt 0 ] && return 0 || return 1
-}
-
-# ========== 服务管理函数 ==========
-manage_service() {
-    # 设置开机自启动
     /etc/init.d/nikki enable
-    log "服务管理函数,已设置Nikki开机自启动"
+    /etc/init.d/nikki restart
     
-    # 启动服务
-    /etc/init.d/nikki start
-    log "服务管理函数,已启动Nikki服务"
-
-    log "服务管理函数,manage_service等待 ${long_delay}秒让服务稳定运行..."
-    sleep $long_delay
-
-    # 重载配置
-    /etc/init.d/nikki reload
-    log "服务管理函数,已重载Nikki配置"
+    log "等待5秒让Nikki服务启动..."
+    sleep 5
+    
+    # 检查服务状态
+    if [ -f "$APP_LOG" ]; then
+        if grep -q "Waiting timeout" "$APP_LOG"; then
+            log "警告：TUN启动超时，正在重新加载Nikki..."
+            /etc/init.d/nikki reload
+        elif grep -q "\[App\] Exit" "$APP_LOG"; then
+            log "警告：Nikki意外退出，正在重新加载..."
+            /etc/init.d/nikki reload
+        elif grep -q "Tun device is online\|successful" "$APP_LOG"; then
+            log "Nikki启动成功"
+        else
+            log "Nikki正在运行，但日志中没有明确的启动状态"
+        fi
+    else
+        log "警告：未找到Nikki日志文件 $APP_LOG"
+    fi
 }
 
-# ========== 主程序开始 ==========
-log "主程序开始,=== Nikki服务安装配置脚本开始 ==="
-
-# 检查Nikki是否已安装
-if [ -d "/etc/nikki" ]; then
-    log "主程序开始,检测到/etc/nikki目录已存在，跳过安装步骤"
-else
-    log "主程序开始,未检测到Nikki安装，开始安装流程..."
-    
-    # 检查网络连接
+# ========== 主程序 ==========
+main() {
+    # 1. 检查网络连接
     if ! check_network; then
         exit 1
     fi
     
-    # 安装Nikki服务
-    if ! install_nikki; then
-        log "主程序开始,错误：Nikki安装失败"
-        exit 1
-    fi
-
-fi
-
-# 短暂延迟确保服务就绪
-log "等待 ${short_delay}秒让服务初始化..."
-sleep $short_delay
-
-# 管理服务
-# manage_service
-
-# ========== 配置文件下载 ==========
-log "配置文件下载,开始下载配置文件..."
-attempt=1
-while [ $attempt -le $max_retries ]; do
-    if download_config; then
-        log "配置文件下载,配置文件下载成功"
-        break
+    # 2. 检查Nikki服务状态
+    if check_nikki_service; then
+        # 服务已存在且已配置
+        if [ -f "$NIKKI_PROFILE_DIR/nikki.yaml" ] && [ -f "$NIKKI_PROFILE_DIR/proxy.yaml" ]; then
+            start_nikki_service
+            exit 0
+        fi
+    else
+        # 服务不存在或未配置
+        if ! download_nikki_feed || ! install_packages; then
+            log "错误：Nikki安装失败"
+            exit 1
+        fi
     fi
     
-    # 如果两个文件都已存在，直接跳出循环
-    if [ -f "$target_dir/nikki.yaml" ] && [ -f "$target_dir/clashmetatest.yaml" ]; then
-        log "配置文件下载,配置文件均已存在，无需下载，跳过重试"
-        break
-    fi
+    # 3. 初始化配置
+    init_nikki_config
     
-    if [ $attempt -eq $max_retries ]; then
-        log "配置文件下载,错误：配置文件下载失败，达到最大重试次数"
+    # 4. 下载配置文件
+    if ! download_config_files; then
+        log "错误：配置文件下载失败"
         exit 1
     fi
     
-    attempt=$((attempt + 1))
-    log "等待 ${short_delay}秒后重试($attempt/$max_retries)..."
-    sleep $short_delay
-done
-
-# 初始化Nikki配置
-init_nikki_config
-
-# 重载服务配置
-manage_service
-# log "等待 ${long_delay}秒让服务稳定运行..."
-# sleep $long_delay
-
-# ========== 服务状态检查 ==========
-log "检查服务运行状态..."
-if [ -f "$app_log" ]; then
-    if grep -q "[Proxy] Waiting timeout" "$app_log"; then
-        log "警告：检测到代理超时问题，可能需要手动检查配置"
-    fi
+    # 5. 启动服务
+    start_nikki_service
     
-    if grep -q "[App] Exit" "$app_log"; then
-        log "警告插件启动失败"
-    fi
-    if grep -q "Tun device is online" "$app_log"; then
-        log "Tun device is online，正常启动日志，服务正常运行"
-    fi
-    if grep -q "successful" "$app_log"; then
-        log "Hijack successful，正常启动日志，服务正常运行"
-    fi
-else
-    log "警告：未找到应用日志文件，服务状态未知"
-fi
+    log "Nikki安装和配置完成"
+}
 
-log "=== Nikki服务安装配置完成 ==="
-exit 0
+# 执行主程序
+main
