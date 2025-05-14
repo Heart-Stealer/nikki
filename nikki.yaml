@@ -2,8 +2,8 @@
 DY_urltest: &DY_urltest
   proxy: DIRECT
   interval: 43200
-  # health-check: {enable: true, url: http://www.gstatic.com/generate_204, interval: 10800, timeout: 8000, tolerance: 100, lazy: true}
-  health-check: {enable: true, url: https://www.gstatic.com/generate_204, interval: 10800, timeout: 8000, tolerance: 100, lazy: true}
+  # health-check: {enable: true, url: http://www.gstatic.com/generate_204, interval: 300, timeout: 3000, tolerance: 100, lazy: true}
+  health-check: {enable: true, url: https://www.gstatic.com/generate_204, interval: 300, timeout: 3000, tolerance: 100, lazy: true}
   udp: true
   override:
     proxy-name:
@@ -186,28 +186,29 @@ tun:
   # 启用 tun
   enable: true
   # enable: false
+  # 路由器
+  device: nikki
   # system/gvisor/mixed
   # https://wiki.metacubex.one/config/inbound/tun/?h=android#stack
   stack: mixed
   # 自动设置全局路由，可以自动将全局流量路由进入 tun 网卡
   auto-route: true
-  # 仅支持 Linux，自动配置 iptables/nftables 以重定向 TCP 连接，需要auto-route已启用
-  # 在 Android 中：
-  # 仅转发本地 IPv4 连接。要通过热点或中继共享您的 VPN 连接，请使用 VPNHotspot。
-  # 在 Linux 中：
-  # 带有 auto-route 的 auto-redirect 现在可以在路由器上按预期工作，无需干预。
-  strict-route: true
   # 是否自动重定向网络流量
-  auto-redirect: true                
+  auto-redirect: true
   # 自动选择流量出口接口，多出口网卡同时连接的设备建议手动指定出口网卡
   auto-detect-interface: true
   # dns 劫持，将匹配到的连接导入内部 dns 模块，不书写协议则为 udp://
   dns-hijack:
     - "any:53"
     - "tcp://any:53"
-  # 路由器
-  device: nikki
+  route-exclude-address: []
   mtu: 9000
+  # 仅支持 Linux，自动配置 iptables/nftables 以重定向 TCP 连接，需要auto-route已启用
+  # 在 Android 中：
+  # 仅转发本地 IPv4 连接。要通过热点或中继共享您的 VPN 连接，请使用 VPNHotspot。
+  # 在 Linux 中：
+  # 带有 auto-route 的 auto-redirect 现在可以在路由器上按预期工作，无需干预。
+  strict-route: true
   gso: true
   gso-max-size: 65536
   endpoint-independent-nat: false
@@ -216,10 +217,10 @@ tun:
 dns:
   # 关闭将使用系统 DNS
   enable: true
-  # DNS 监听地址
-  listen: '[::]:1053'
   # IPV6解析开关；如果为false，将返回ipv6结果为空
   ipv6: true
+  # DNS 监听地址
+  listen: '[::]:1053'
   # ipv6: false
   use-system-hosts: false
   use-hosts: true
@@ -236,6 +237,11 @@ dns:
   fake-ip-filter-mode: blacklist
   # Fake-ip 过滤，列表中的域名返回真实IP
   fake-ip-filter:
+    - +.lan
+    - +.local
+    - time.*.com
+    - ntp.*.com
+    - +.market.xiaomi.com
     - "geosite:cn"
     - "geosite:category-games"
     - "RULE-SET:aa-fakeip"
@@ -246,13 +252,13 @@ dns:
     # - "+.dynv6.com"
   # # 解析非IP的dns用的dns服务器，只支持纯IP, 可为加密 DNS
   default-nameserver:
-    - '223.5.5.5#h3=true'
-    - '119.29.29.29#h3=true'
+    - '223.5.5.5'
+    - '119.29.29.29'
     # - 222.222.222.222
   # 默认DNS服务器，支持udp/tcp/dot/doh/doq
   nameserver:
-    - '223.5.5.5#h3=true'
-    - '119.29.29.29#h3=true'
+    - '223.5.5.5'
+    - '119.29.29.29'
     # - https://dns.alidns.com/dns-query
     # - https://doh.pub/dns-query
     # - https://dns.google/dns-query
@@ -323,16 +329,16 @@ skip-auth-prefixes:
   - 127.0.0.1/32
   - 192.168.0.0/16
 
-Proxy_first: &Proxy_first   {type: select, proxies: [默认代理, 全球直连, 手动选择, 手动自动], udp: true}
+Proxy_first: &Proxy_first   {type: select, proxies: [默认代理, 默认直连, 手动选择, 手动自动], udp: true}
 Direct_first: &Direct_first {type: select, proxies: [DIRECT, REJECT, 手动选择, 手动自动], udp: true}
 Reject_first: &Reject_first {type: select, proxies: [REJECT, DIRECT, 手动选择, 手动自动], udp: true}
-Include_all: &Include_all   {type: select, proxies: [手动自动, 手动选择, 全球直连, 负载均衡, 广告拦截], udp: true}
+Include_all: &Include_all   {type: select, proxies: [手动选择, 手动自动, 默认直连, 负载均衡, 广告拦截], udp: true}
 select_auto: &select_auto   {type: select, proxies: [自动选择, 香港自动, 日本自动, 狮城自动, 美国自动], udp: true}
 
-self_lb: &self_lb {type: load-balance, include-all: true, filter: "(?i)(.*(⬇️|🌳)|(-([2-9]|[0-9][0-9]).[0-9]))", interval: 600, strategy: consistent-hashing, timeout: 8000, lazy: true, udp: true}
+self_lb: &self_lb {type: load-balance, include-all: true, filter: "(?i)(.*(⬇️|🌳)|(-([2-9]|[0-9][0-9]).[0-9]))", interval: 300, strategy: consistent-hashing, timeout: 3000, lazy: true, udp: true}
 # auto_select fallback
-self_au: &self_au {type: url-test, include-all: true, interval: 600, timeout: 8000, tolerance: 100, lazy: true, udp: true}
-self_fb: &self_fb {type: fallback, include-all: true, interval: 600, timeout: 8000, tolerance: 100, lazy: true, udp: true}
+self_au: &self_au {type: url-test, include-all: true, interval: 300, timeout: 3000, tolerance: 100, lazy: true, udp: true}
+self_fb: &self_fb {type: fallback, include-all: true, interval: 300, timeout: 3000, tolerance: 100, lazy: true, udp: true}
 self_hk: &self_hk {<<: *Dingyue, filter: "(?i)🌳|港|🇭🇰|hk|hongkong|hong kong"}
 self_jp: &self_jp {<<: *Dingyue, filter: "(?i)🌳|日|🇯🇵|jp|JP|japan"}
 self_sg: &self_sg {<<: *Dingyue, filter: "(?i)🌳|新|🇸🇬|sg|singapore"}
@@ -341,7 +347,7 @@ auto_hk: &auto_hk {<<: *Dingyue, type: url-test, filter: "(?i)🌳|港|🇭🇰|
 auto_jp: &auto_jp {<<: *Dingyue, type: url-test, filter: "(?i)🌳|日|🇯🇵|jp|JP|japan"}
 auto_sg: &auto_sg {<<: *Dingyue, type: url-test, filter: "(?i)🌳|新|🇸🇬|sg|singapore"}
 auto_us: &auto_us {<<: *Dingyue, type: url-test, filter: "(?i)🌳|美|🇺🇸|us|unitedstates|united states"}
-only_au: &only_au {type: url-test, filter: "(?i)🌳|港|🇭🇰|hk|hongkong|hong kong|日|🇯🇵|jp|JP|japan|新|🇸🇬|sg|singapore|美|🇺🇸|us|unitedstates|united states", include-all: true, interval: 600, timeout: 8000, tolerance: 100}
+only_au: &only_au {type: url-test, filter: "(?i)🌳|港|🇭🇰|hk|hongkong|hong kong|日|🇯🇵|jp|JP|japan|新|🇸🇬|sg|singapore|美|🇺🇸|us|unitedstates|united states", include-all: true, interval: 300, timeout: 3000, tolerance: 100}
 
 # https://github.com/Heart-Stealer/myclash/raw/main/icons/twitter.svg
 # https://raw.githubusercontent.com/Heart-Stealer/myclash/main/icons/twitter.svg
@@ -351,7 +357,7 @@ proxy-groups:
   - {name: 手动选择,    <<: *Dingyue,      icon: "https://gh-proxy.com/https://raw.githubusercontent.com/Heart-Stealer/myclash/main/icons/adjust.svg"}
   - {name: 手动自动,    <<: *select_auto,  icon: "https://gh-proxy.com/https://raw.githubusercontent.com/Heart-Stealer/myclash/main/icons/recycle.svg"}
   - {name: 漏网之鱼,    <<: *Direct_first, icon: "https://gh-proxy.com/https://raw.githubusercontent.com/Heart-Stealer/myclash/main/icons/fish.svg"}
-  - {name: 全球直连,    <<: *Direct_first, icon: "https://gh-proxy.com/https://raw.githubusercontent.com/Heart-Stealer/myclash/main/icons/link.svg"}
+  - {name: 默认直连,    <<: *Direct_first, icon: "https://gh-proxy.com/https://raw.githubusercontent.com/Heart-Stealer/myclash/main/icons/link.svg"}
   - {name: 广告拦截,    <<: *Reject_first, icon: "https://gh-proxy.com/https://raw.githubusercontent.com/Heart-Stealer/myclash/main/icons/block.svg"}
   - {name: 自动选择,    <<: *self_au,      icon: "https://gh-proxy.com/https://raw.githubusercontent.com/Heart-Stealer/myclash/main/icons/merry_go.svg"}
   - {name: 负载均衡,    <<: *self_lb,      icon: "https://gh-proxy.com/https://raw.githubusercontent.com/Heart-Stealer/myclash/main/icons/balance.svg"}
@@ -405,20 +411,22 @@ proxy-groups:
 # 优先级
 # 规则将按照从上到下的顺序匹配，列表顶部的规则优先级高于其底下的规则
 # 如请求为 udp，而代理节点没有 udp 支持 (例如ss节点没写udp: true),则会继续向下匹配
+# 在data目录下，如果域名带有@cn标识，表示该域名有中国接口。可以设置类别 geosite:steam@cn 为直连，以确保这些域名直连。
+# 注意：在路由配置中，类别越靠前，优先级越高。例如，geosite:category-games@cn 应放在 geosite:geolocation-!cn 前面。
 
 rules:
-  - RULE-SET,aa-direct,全球直连
+  - RULE-SET,aa-direct,默认直连
   - RULE-SET,aa-proxy0,默认代理
 
-  - GEOSITE,private,全球直连
-  - GEOIP,private,全球直连,no-resolve
-  - RULE-SET,private_ip,全球直连,no-resolve
+  - GEOSITE,private,默认直连
+  - GEOIP,private,默认直连,no-resolve
+  - RULE-SET,private_ip,默认直连,no-resolve
 
-  # - IP-CIDR,10.0.0.0/8,全球直连
-  # - IP-CIDR,172.16.0.0/12,全球直连
-  # - IP-CIDR,192.168.0.0/16,全球直连
-  # - IP-CIDR,100.64.0.0/10,全球直连
-  # - IP-CIDR,127.0.0.0/8,全球直连
+  # - IP-CIDR,10.0.0.0/8,默认直连
+  # - IP-CIDR,172.16.0.0/12,默认直连
+  # - IP-CIDR,192.168.0.0/16,默认直连
+  # - IP-CIDR,100.64.0.0/10,默认直连
+  # - IP-CIDR,127.0.0.0/8,默认直连
 
   # - RULE-SET,AD,广告拦截
   - RULE-SET,AD-Lite,广告拦截
@@ -426,10 +434,11 @@ rules:
   - RULE-SET,EasyListChina,广告拦截
   # - RULE-SET,EasyPrivacy,广告拦截
   - RULE-SET,ProgramAD,广告拦截
-  - RULE-SET,ab-direct,全球直连
+  - RULE-SET,ab-direct,默认直连
+
   - GEOSITE,category-ads-all,广告拦截
-  - GEOSITE,category-games@cn,全球直连
-  - GEOSITE,category-public-tracker,全球直连
+  - GEOSITE,category-games@cn,默认直连
+  - GEOSITE,category-public-tracker,默认直连
 
   - GEOSITE,github,GitHub
   - GEOSITE,google,Google
@@ -444,7 +453,7 @@ rules:
   - GEOSITE,netflix,NETFLIX
   - GEOIP,netflix,NETFLIX,no-resolve
   - GEOSITE,steam,Steam
-  - GEOSITE,steam@cn,全球直连
+  - GEOSITE,steam@cn,默认直连
   - GEOSITE,tiktok,TikTok
   - GEOSITE,twitter,Twitter
   - GEOIP,twitter,Twitter,no-resolve
@@ -453,7 +462,7 @@ rules:
   - GEOSITE,facebook,Facebook
   - GEOIP,facebook,Facebook,no-resolve
 
-  - GEOSITE,category-media-cn,全球直连
+  - GEOSITE,category-media-cn,默认直连
   - GEOSITE,bing,Bing
   - GEOSITE,cloudflare,Cloudflare
   - GEOIP,cloudflare,Cloudflare,no-resolve
@@ -466,6 +475,7 @@ rules:
   - GEOSITE,apple@cn,Apple
   - GEOSITE,apple-cn,Apple
 
+  - GEOSITE,amazon@cn,默认直连
   - GEOSITE,amazon,Amazon
   - GEOSITE,android,Android
   - GEOSITE,discord,Discord
@@ -482,37 +492,38 @@ rules:
   # - GEOIP,jp,默认代理,no-resolve
   # - GEOIP,bilibili,bilibili,no-resolve
 
-  # # - RULE-SET,domestic_non_ip,全球直连
-  # - RULE-SET,direct_non_ip,全球直连
-  # - RULE-SET,lan_non_ip,全球直连
+  # # - RULE-SET,domestic_non_ip,默认直连
+  # - RULE-SET,direct_non_ip,默认直连
+  # - RULE-SET,lan_non_ip,默认直连
   # ### IP 类规则
-  # - RULE-SET,lan_ip,全球直连
-  # - RULE-SET,domestic_ip,全球直连
-  # # - RULE-SET,china_ip,全球直连
+  # - RULE-SET,lan_ip,默认直连
+  # - RULE-SET,domestic_ip,默认直连
+  # # - RULE-SET,china_ip,默认直连
 
   # - IP-ASN,13335,DIRECT
   # 匹配来源 IP 所属国家代码
-  # - SRC-GEOIP,cn,全球直连
+  # - SRC-GEOIP,cn,默认直连
   # 匹配来源 IP 所属 ASN
-  # - SRC-IP-ASN,9808,全球直连
+  # - SRC-IP-ASN,9808,默认直连
   # 匹配来源 IP 后缀范围
-  # - SRC-IP-SUFFIX,192.168.1.201/8,全球直连
+  # - SRC-IP-SUFFIX,192.168.1.201/8,默认直连
   # 匹配请求目标端口范围
-  # - DST-PORT,22,全球直连
+  # - DST-PORT,22,默认直连
   # 匹配请求来源端口范围
-  # - SRC-PORT,7777,全球直连
+  # - SRC-PORT,7777,默认直连
   # # 匹配目标 IP 地址范围
-  # - IP-CIDR,10.0.0.0/8,全球直连
-  # - IP-CIDR,172.16.0.0/12,全球直连
-  # - IP-CIDR,192.168.0.0/16,全球直连
-  # - IP-CIDR,100.64.0.0/10,全球直连
-  # - IP-CIDR,127.0.0.0/8,全球直连
-  # - GEOSITE,private,全球直连
-  # - RULE-SET,private_domain,全球直连
-  # - GEOIP,private,全球直连,no-resolve
-  # - GEOSITE,CN,全球直连
-  - GEOSITE,geolocation-cn,全球直连
-  - GEOIP,cn,全球直连,no-resolve
+  # - IP-CIDR,10.0.0.0/8,默认直连
+  # - IP-CIDR,172.16.0.0/12,默认直连
+  # - IP-CIDR,192.168.0.0/16,默认直连
+  # - IP-CIDR,100.64.0.0/10,默认直连
+  # - IP-CIDR,127.0.0.0/8,默认直连
+  # - GEOSITE,private,默认直连
+  # - RULE-SET,private_domain,默认直连
+  # - GEOIP,private,默认直连,no-resolve
+  # - GEOSITE,CN,默认直连
+  - DOMAIN-SUFFIX,cn,默认直连
+  - GEOSITE,geolocation-cn,默认直连
+  - GEOIP,cn,默认直连,no-resolve
   - MATCH,漏网之鱼
   
 rule-anchor:
